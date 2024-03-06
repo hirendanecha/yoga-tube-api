@@ -4,6 +4,7 @@ const User = require("../models/user.model");
 const utils = require("../helpers/utils");
 const environments = require("../environments/environment");
 const jwt = require("jsonwebtoken");
+const authorize = require("../middleware/authorize");
 
 const { getPagination, getCount, getPaginationData } = require("../helpers/fn");
 const { Encrypt } = require("../helpers/cryptography");
@@ -80,6 +81,7 @@ exports.login = async function (req, res) {
     });
   }
 };
+
 exports.getToken = async function (req, res) {
   const data = req?.cookies;
   console.log(data["auth-user"]);
@@ -294,6 +296,7 @@ exports.changeActiveStatus = function (req, res) {
     }
   });
 };
+
 exports.userSuspend = function (req, res) {
   console.log(req.params.id, req.query.IsSuspended);
   User.suspendUser(
@@ -340,9 +343,13 @@ exports.delete = function (req, res) {
   const userId = req.params.id;
   const profileId = req.query.profileId;
   console.log(userId, profileId);
-  const isDeleted = User.delete(userId, profileId);
-  if (isDeleted) {
-    res.json({ error: false, message: "User deleted successfully" });
+  if (req.query.profileId === req.user.id) {
+    const isDeleted = User.delete(userId, profileId);
+    if (isDeleted) {
+      res.json({ error: false, message: "User deleted successfully" });
+    }
+  } else {
+    return res.status(401).json({ message: "Unauthorized token" });
   }
 };
 
@@ -470,6 +477,8 @@ exports.resendVerification = function (req, res) {
 
 exports.logout = function (req, res) {
   console.log("cookies");
+  const token = req.headers.authorization.split(" ")[1];
+  authorize.setTokenInList(token);
   res.clearCookie("auth-user", {
     sameSite: "none",
     secure: true,
@@ -481,7 +490,7 @@ exports.logout = function (req, res) {
   //   sameSite: "none",
   //   domain: environments.domain,
   // });
-  res.end();
+  return res.status(200).json({ message: "logout successfully" });
 };
 
 exports.getStats = async function (req, res) {
@@ -494,5 +503,21 @@ exports.getStats = async function (req, res) {
     } else {
       res.status(404).send({ message: "not found" });
     }
+  }
+};
+
+exports.verifyToken = async function (req, res) {
+  try {
+    const token = req.params.token;
+    const decoded = jwt.verify(token, environments.JWT_SECRET_KEY);
+    if (decoded.user) {
+      res.status(200).send({ message: "Authorized User", verifiedToken: true });
+    } else {
+      res
+        .status(401)
+        .json({ message: "Unauthorized Token", verifiedToken: false });
+    }
+  } catch (err) {
+    res.status(401).json({ message: "Invalid token", verifiedToken: false });
   }
 };
