@@ -106,7 +106,7 @@ exports.notificationMail = async (userData) => {
 
 exports.channelNotificationEmail = async (userData) => {
   let name = userData?.Username;
-  let msg = `You have been assign in FreedomTube channel by the YogaTube Admin.
+  let msg = `You have been assign in YogaTube channel by the YogaTube Admin.
   To access your channel, log into your YogaTube account,click on the
   YogaTube icon at the top of the page,then click on My Channel.`;
   let redirectUrl = `${environment.FRONTEND_URL}`;
