@@ -85,6 +85,21 @@ exports.editCommunity = async function name(req, res) {
   console.log(communityData, Id);
   const community = await Community.edit(communityData, Id);
   if (community) {
+    const emphasisData = req.body.emphasis;
+    const removeEmphasisList = req.body?.removeEmphasisList;
+    const areasData = req.body.areas;
+    const removeAreaList = req.body?.removeAreasList;
+    const emphasis = await Community.addEmphasis(
+      Id,
+      emphasisData,
+      removeEmphasisList
+    );
+    const areas = await Community.addAreas(
+      Id,
+      areasData,
+      removeAreaList
+    );
+    console.log(emphasis, areas);
     return res.json({
       error: false,
       message: "update community successfully",

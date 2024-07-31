@@ -2,6 +2,9 @@ const environment = require("../environments/environment");
 const email = require("./email");
 const jwt = require("jsonwebtoken");
 const __upload_dir = environment.UPLOAD_DIR;
+const moment = require("moment");
+const { default: ical } = require("ical-generator");
+
 var fs = require("fs");
 const db = require("../../config/db.config");
 
@@ -112,7 +115,7 @@ exports.channelNotificationEmail = async (userData) => {
 
   const mailObj = {
     email: userData.Email,
-    subject: "Healing notification",
+    subject: "Yoga.tube notification",
     root: "../email-templates/notification.ejs",
     templateData: { name: name, msg: msg, url: redirectUrl },
   };
@@ -136,7 +139,7 @@ exports.communityApproveEmail = async (profileId, isApprove) => {
     } else {
       msg = `YogaTube has unapproved your Yoga instructors application.`;
     }
-    let redirectUrl = `${environment.FRONTEND_URL}`;
+    let redirectUrl = `${environment.FRONTEND_URL}yoga-instructors`;
     const mailObj = {
       email: userData[0].Email,
       subject: "Yoga notification",
@@ -146,6 +149,149 @@ exports.communityApproveEmail = async (profileId, isApprove) => {
     await email.sendMail(mailObj);
     return;
   }
+};
+
+exports.sendAppointmentMailToUser = async (data) => {
+  const query =
+    "select u.Email,p.FirstName,p.LastName,p.Username from users as u left join profile as p on p.UserID = u.Id where p.ID =?";
+  const values = [data.profileId];
+  const [userData] = await this.executeQuery(query, values);
+  const query1 =
+    "select u.Email,p.FirstName,p.LastName,p.Username from users as u left join profile as p on p.UserID = u.Id where p.ID =?";
+  const values1 = [data.instructureProfileId];
+  const [practitionerData] = await this.executeQuery(query1, values1);
+  console.log("practitionerData", practitionerData);
+  if (userData) {
+    let name = `Hi ${userData.Username || userData.FirstName}`;
+    let msg = "";
+    msg = `You have a new request for a video call with ${
+      practitionerData.Username || practitionerData.FirstName
+    }`;
+    const date = data.date;
+    const time = moment(data.date).format("hh:mm a");
+    let redirectUrl = `${environment.FRONTEND_URL}appointment-call/${data.slug}-${userData.Username}`;
+    const drName = practitionerData.Username;
+    const patientEmail = practitionerData.Email;
+    const topic = data.topics;
+    const mailObj = {
+      email: userData.Email,
+      subject: "Request Video Call",
+      root: "../email-templates/appointment-user.ejs",
+      templateData: {
+        name: name,
+        msg: msg,
+        url: redirectUrl,
+        drName: drName,
+        date: moment(data.date).format("MMMM Do YYYY"),
+        time: time,
+        email: patientEmail,
+        topic: topic,
+      },
+    };
+    const calObj = await getIcalObjectInstance(
+      date,
+      msg,
+      redirectUrl,
+      drName,
+      patientEmail
+    );
+    await email.sendMail(mailObj, calObj);
+    return;
+  }
+};
+exports.sendAppointmentMailToPractitioner = async (data) => {
+  const query =
+    "select u.Email,p.FirstName,p.LastName,p.Username from users as u left join profile as p on p.UserID = u.Id where p.ID =?";
+  const values = [data.profileId];
+  const [userData] = await this.executeQuery(query, values);
+  const query1 =
+    "select u.Email,p.FirstName,p.LastName,p.Username from users as u left join profile as p on p.UserID = u.Id where p.ID =?";
+  const values1 = [data.instructureProfileId];
+  const [practitionerData] = await this.executeQuery(query1, values1);
+  if (practitionerData) {
+    let name = `Hi ${practitionerData.Username || practitionerData.FirstName}`;
+    let msg = "";
+    msg = `You have a new request for a video call with ${
+      userData.Username || userData.FirstName
+    }`;
+    const date = data.date;
+    const time = moment(data.date).format("hh:mm a");
+    let redirectUrl = `${environment.FRONTEND_URL}appointment-call/${data.slug}-${userData.Username}`;
+    const userName = userData.Username;
+    const patientEmail = userData.Email;
+    const topic = data.topics;
+    const mailObj = {
+      email: practitionerData.Email,
+      subject: "Request Video Call",
+      root: "../email-templates/appointment-practitioner.ejs",
+      templateData: {
+        name: name,
+        msg: msg,
+        url: redirectUrl,
+        userName: userName,
+        date: moment(data.date).format("MMMM Do YYYY"),
+        time: time,
+        email: patientEmail,
+        topic: topic,
+      },
+    };
+    const calObj = await getIcalObjectInstance(
+      date,
+      msg,
+      redirectUrl,
+      userName,
+      patientEmail
+    );
+    await email.sendMail(mailObj, calObj);
+    return;
+  }
+};
+
+exports.cancelAppointmentNotificationMail = async (id, instructureName) => {
+  const query =
+    "select u.Email,p.FirstName,p.LastName,p.Username from users as u left join profile as p on p.UserID = u.Id where p.ID =?";
+  const values = [id];
+  const [data] = await this.executeQuery(query, values);
+  let name = data?.Username || data.FirstName;
+  let msg = `Your appointment with ${instructureName} has been cancelled, please book another slot!`;
+  let redirectUrl = `${environment.FRONTEND_URL}`;
+
+  const mailObj = {
+    email: data.Email,
+    subject: "Yoga.tube notification",
+    root: "../email-templates/notification.ejs",
+    templateData: { name: name, msg: msg, url: redirectUrl },
+  };
+
+  await email.sendMail(mailObj);
+  return;
+};
+
+const getIcalObjectInstance = async (
+  starttime,
+  description,
+  url,
+  name,
+  email
+) => {
+  const cal = ical({
+    domain: "yoga.tube",
+    name: "Appointments Reminder",
+  });
+  //   cal.domain("veterinarian.tube");
+  cal.createEvent({
+    start: starttime, // eg : moment()
+    end: moment(starttime).add(30, "min"),
+    description: description, // 'More description'
+    url: url, // 'event url',
+    summary: "Request video call with Veterinarians",
+    organizer: {
+      // 'organizer details'
+      name: name,
+      email: email,
+    },
+  });
+  return cal;
 };
 
 exports.executeQuery = async (query, values = []) => {

@@ -222,8 +222,20 @@ Community.findCommunityById = async function (id) {
 };
 
 Community.findCommunityBySlug = async function (slug) {
-  const communityQuery =
-    "select c.*,p.Username, count(cm.profileId) as members from community as c left join profile as p on p.ID = c.profileId left join communityMembers as cm on cm.communityId = c.Id where c.slug=?";
+  const communityQuery = `SELECT 
+    c.*, 
+    p.Username, 
+    COUNT(cm.profileId) AS members 
+FROM 
+    community AS c 
+LEFT JOIN 
+    profile AS p ON p.ID = c.profileId 
+LEFT JOIN 
+    communityMembers AS cm ON cm.communityId = c.Id 
+WHERE 
+    c.slug = ? 
+GROUP BY 
+    c.Id, p.Username`;
   const communities = await executeQuery(communityQuery, [slug]);
   const community = communities?.[0] || {};
 
@@ -232,6 +244,18 @@ Community.findCommunityBySlug = async function (slug) {
       "select cm.*,p.Username, p.ProfilePicName,p.FirstName,p.LastName from communityMembers as cm left join profile as p on p.ID = cm.profileId where cm.communityId = ?;";
     const members = await executeQuery(getMembersQuery, [community?.Id]);
     community["memberList"] = members;
+  }
+
+  if (community.pageType === "community") {
+    const query1 =
+      "select pe.eId,eh.name from practitioner_emphasis as pe left join emphasis_healing as eh on eh.eId = pe.eId where pe.communityId =? ";
+    const query2 =
+      "select pa.aId,ah.name from practitioner_area as pa left join area_healing as ah on ah.aId = pa.aId where pa.communityId =? ";
+    const values1 = [community.Id];
+    const emphasis = await executeQuery(query1, values1);
+    const areas = await executeQuery(query2, values1);
+    community.emphasis = emphasis;
+    community.areas = areas;
   }
 
   return community;
@@ -311,13 +335,7 @@ Community.getCommunity = async function (id, pageType) {
   const communityId = await executeQuery(query1, [id]);
   const ids = communityId.map((ele) => Number(ele.communityId)).join(",");
   let query = "";
-  // if (ids) {
-  //   query = `select c.*,count(cm.profileId) as members from community as c left join communityMembers as cm on cm.communityId = c.Id where c.isApprove = 'Y' AND c.pageType = '${pageType}' AND cm.profileId != ? group by c.Id order by c.Id desc;`;
-  // } else {
-  //   query = `select c.*,count(cm.profileId) as members from community as c left join communityMembers as cm on cm.communityId = c.Id where c.isApprove = 'Y' AND c.pageType = '${pageType}' AND cm.profileId != ? group by c.Id order by c.Id desc;`;
-  // }
   query = `select c.* from community as c where c.isApprove = 'Y' AND c.pageType = '${pageType}' group by c.Id order by c.Id desc;`;
-  // const communityList = await executeQuery(query, [id]);
   const communityList = await executeQuery(query);
   console.log(communityList);
   const localCommunities = [];
@@ -333,12 +351,13 @@ Community.getCommunity = async function (id, pageType) {
       const values1 = [community.Id];
       const emphasis = await executeQuery(query1, values1);
       const areas = await executeQuery(query2, values1);
-      const members = await executeQuery(query3, values1);
-      community.members = members.length;
       const memberList = [];
+      const members = await executeQuery(query3, values1);
       members.map((e) => {
         memberList?.push(e.profileId);
       });
+      community.memberList = memberList;
+      community.members = members.length;
       community.emphasis = emphasis;
       community.areas = areas;
       localCommunities.push(community);
@@ -386,25 +405,39 @@ Community.getJoinedCommunityByProfileId = async function (id, pageType) {
   return joinedCommunityList;
 };
 
-Community.addEmphasis = async function (communityId, data) {
-  if (data) {
-    const newData = data
+Community.addEmphasis = async function (
+  communityId,
+  emphasisList,
+  removeEmphasisList
+) {
+  if (emphasisList?.length) {
+    const newData = emphasisList
       .map((element) => `(${communityId}, ${element})`)
       .join(", ");
     const query = `insert into practitioner_emphasis (communityId,eId) values ${newData}`;
     const emphasis = await executeQuery(query);
     return emphasis;
   }
+  if (removeEmphasisList?.length) {
+    const query = `delete from practitioner_emphasis where communityId = ${communityId} and eId in (${removeEmphasisList})`;
+    const interests = await executeQuery(query);
+    return interests;
+  }
 };
 
-Community.addAreas = async function (communityId, data) {
-  if (data) {
-    const newData = data
+Community.addAreas = async function (communityId, areaList, removeAreaList) {
+  if (areaList?.length) {
+    const newData = areaList
       .map((element) => `(${communityId}, ${element})`)
       .join(", ");
     const query = `insert into practitioner_area (communityId,aId) values ${newData}`;
     const areas = await executeQuery(query);
     return areas;
+  }
+  if (removeAreaList?.length) {
+    const query = `delete from practitioner_area where communityId = ${communityId} and aId in (${removeAreaList})`;
+    const interests = await executeQuery(query);
+    return interests;
   }
 };
 
